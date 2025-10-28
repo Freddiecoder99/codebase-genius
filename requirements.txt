@@ -1,0 +1,31 @@
+# Core Jac framework
+jaclang>=0.7.0
+
+# Web framework (FastAPI comes with Jac)
+uvicorn>=0.24.0
+
+# LLM providers
+openai>=1.0.0
+google-generativeai>=0.3.0
+
+# Code parsing
+tree-sitter>=0.20.0
+tree-sitter-python>=0.20.0
+
+# Git operations
+gitpython>=3.1.40
+
+# Utilities
+python-dotenv>=1.0.0
+requests>=2.31.0
+typing-extensions>=4.8.0
+
+# Markdown and diagram generation
+markdown>=3.5.0
+graphviz>=0.20.0
+
+# Optional: Frontend
+streamlit>=1.28.0
+
+# Development
+pytest>=7.4.0

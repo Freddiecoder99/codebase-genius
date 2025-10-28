@@ -1,0 +1,32 @@
+# Virtual environment
+venv/
+env/
+
+# Environment variables
+.env
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Jac session files
+*.session
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Outputs
+outputs/*/
+
+# Cloned repositories (temporary)
+temp_repos/
+
+# OS files
+.DS_Store
+Thumbs.db
