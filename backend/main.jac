@@ -41,20 +41,35 @@ walker CodeGenius {
     """
     has repo_url: str;
     has output_path: str = "./outputs";
-
+    
     can start with entry {
         print("=" * 50);
         print("CodeGenius Supervisor Started!");
         print("=" * 50);
         print(f"Repository URL: {self.repo_url}");
         print(f"Output path: {self.output_path}");
-
-        # Step 1: Spawn RepoMapper to analyze the repository
-        print("\nStep 1: Mapping repository structure...");
         
-        mapper = here spawn RepoMapper(repo_url=self.repo_url);
-
-        print("\nCodeGenius workflow initiated!");
+        # Step 1: Spawn RepoMapper to analyze the repository
+        print("\n�� Step 1: Mapping repository structure...");
+        here spawn RepoMapper(repo_url=self.repo_url);
+        
+        # Step 2: Spawn CodeAnalyzer to build CCG
+        print("\n📍 Step 2: Analyzing code and building CCG...");
+        if here.local_path {
+            here spawn CodeAnalyzer(
+                local_path=here.local_path,
+                max_files=30
+            );
+        } else {
+            print("⚠ Skipping code analysis - no local path available");
+        }
+        
+        # Step 3: Will add DocGenie next
+        print("\n📍 Step 3: Documentation generation (coming next)...");
+        
+        print("\n" + "=" * 50);
+        print("CodeGenius Workflow Complete!");
+        print("=" * 50);
     }
 }
 
@@ -144,17 +159,102 @@ walker CodeAnalyzer {
     """
     Agent responsible for deep code analysis and CCG construction
     """
-    has files_to_analyze: list = [];
-
+    has local_path: str;
+    has max_files: int = 30;
+    
     can analyze_code with entry {
         print("\n" + "=" * 50);
         print("CodeAnalyzer Agent Started");
         print("=" * 50);
-        print(f"Files to analyze: {len(self.files_to_analyze)}");
+        print(f"Analyzing repository at: {self.local_path}");
+        
+        # Import analysis utilities
+        import from utils.code_analyzer { 
+            CodeParser, 
+            PythonAnalyzer, 
+            CodeContextGraph,
+            FileSelector
+        }
+        
+        # Step 1: Select files to analyze
+        print(f"\n[1/4] Selecting files to analyze (max: {self.max_files})...");
+        files_to_analyze = FileSelector.get_code_files(self.local_path, self.max_files);
+        print(f"✓ Selected {len(files_to_analyze)} files");
+        
+        # Show some files
+        print("\nFiles to analyze:");
+        i = 0;
+        for file in files_to_analyze {
+            if i >= 5 {
+                break;
+            }
+            print(f"  {i+1}. {Path(file).name}");
+            i += 1;
+        }
 
-        # TODO: Implement code analysis with Tree-sitter
-        print("\n⚠ Code analysis not yet implemented");
-        print("This will parse source files and build Code Context Graph");
+        if len(files_to_analyze) > 5 {
+            print(f"  ... and {len(files_to_analyze) - 5} more");
+        }
+        
+        # Step 2: Initialize parser and analyzer
+        print("\n[2/4] Initializing code parser...");
+        parser = CodeParser();
+        py_analyzer = PythonAnalyzer();
+        ccg = CodeContextGraph();
+        
+        # Step 3: Parse and analyze files
+        print("\n[3/4] Parsing and analyzing files...");
+        analyzed_count = 0;
+        
+        for file_path in files_to_analyze {
+            # Parse the file
+            parsed = parser.parse_file(file_path);
+            
+            if parsed and parsed['language'] == 'python' {
+                # Analyze Python code
+                analysis = py_analyzer.analyze(parsed);
+                
+                if analysis {
+                    ccg.add_file_analysis(analysis);
+                    analyzed_count += 1;
+                }
+            }
+        }
+        
+        print(f"✓ Successfully analyzed {analyzed_count} files");
+        
+        # Step 4: Build and store CCG
+        print("\n[4/4] Building Code Context Graph...");
+        ccg_data = ccg.export_to_dict();
+        stats = ccg.get_statistics();
+        
+        print(f"✓ CCG constructed with:");
+        print(f"  - {stats['total_nodes']} nodes");
+        print(f"  - {stats['total_edges']} edges");
+        print(f"  - {stats['functions']} functions");
+        print(f"  - {stats['classes']} classes");
+        
+        # Store CCG in the node
+        here.code_context_graph = ccg_data;
+        
+        # Show sample of what was found
+        if stats['functions'] > 0 {
+            print("\nSample functions found:");
+            i = 0;
+            for node in ccg_data['nodes'] {
+                if i >= 5 {
+                    break;
+                }
+                if node['type'] == 'function' {
+                    print(f"  - {node['name']}() in {os.path.basename(node['file'])}");
+                    i += 1;
+                }
+            }
+        }
+        
+        print("\n" + "=" * 50);
+        print("CodeAnalyzer Complete!");
+        print("=" * 50);
     }
 }
 
