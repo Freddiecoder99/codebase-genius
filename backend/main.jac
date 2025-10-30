@@ -49,8 +49,16 @@ walker CodeGenius {
         print(f"Repository URL: {self.repo_url}");
         print(f"Output path: {self.output_path}");
         
+        # Extract repo name from URL
+        import from pathlib { Path }
+        repo_name = self.repo_url.rstrip('/').split('/')[-1];
+        if repo_name.endswith('.git') {
+            repo_name = repo_name[:-4];
+        }
+        print(f"Repository name: {repo_name}");
+        
         # Step 1: Spawn RepoMapper to analyze the repository
-        print("\n�� Step 1: Mapping repository structure...");
+        print("\n📍 Step 1: Mapping repository structure...");
         here spawn RepoMapper(repo_url=self.repo_url);
         
         # Step 2: Spawn CodeAnalyzer to build CCG
@@ -64,12 +72,25 @@ walker CodeGenius {
             print("⚠ Skipping code analysis - no local path available");
         }
         
-        # Step 3: Will add DocGenie next
-        print("\n📍 Step 3: Documentation generation (coming next)...");
+        # Step 3: Spawn DocGenie to generate documentation
+        print("\n📍 Step 3: Generating documentation...");
+        here spawn DocGenie(
+            repo_name=repo_name,
+            repo_url=self.repo_url,
+            output_path=self.output_path
+        );
         
         print("\n" + "=" * 50);
-        print("CodeGenius Workflow Complete!");
+        print("🎉 CodeGenius Workflow Complete!");
         print("=" * 50);
+        
+        # Print final summary
+        if hasattr(here, 'documentation_path') {
+            print(f"\n✅ Documentation generated successfully!");
+            print(f"📁 Output location: {here.documentation_path}");
+            print(f"\n💡 View your documentation:");
+            print(f"   cat {here.documentation_path}");
+        }
     }
 }
 
@@ -90,7 +111,7 @@ walker RepoMapper {
             RepoCloner,
             FileTreeGenerator,
             ReadmeAnalyzer
-        };
+        }
 
         # Initialize tools
         cloner = RepoCloner();
@@ -176,6 +197,8 @@ walker CodeAnalyzer {
             FileSelector
         }
         
+        import from pathlib { Path }
+
         # Step 1: Select files to analyze
         print(f"\n[1/4] Selecting files to analyze (max: {self.max_files})...");
         files_to_analyze = FileSelector.get_code_files(self.local_path, self.max_files);
@@ -262,17 +285,68 @@ walker DocGenie {
     """
     Agent responsible for documentation synthesis
     """
-    has analysis_results: dict = {};
-
+    has repo_name: str;
+    has repo_url: str;
+    has output_path: str = "./outputs";
+    
     can generate_docs with entry {
         print("\n" + "=" * 50);
         print("DocGenie Agent Started");
         print("=" * 50);
-        print("Generating documentation...");
-
-        # TODO: Implement documentation generation
-        print("\n⚠ Documentation generation not yet implemented");
-        print("This will convert analysis results to markdown");
+        print(f"Generating documentation for: {self.repo_name}");
+        
+        # Import documentation utilities
+        import from utils.doc_generator { 
+            MarkdownGenerator, 
+            DocumentationSaver 
+        }
+        
+        # Get data from the repository node
+        file_tree = here.file_tree if hasattr(here, 'file_tree') else {};
+        readme_summary = here.readme_summary if hasattr(here, 'readme_summary') else "";
+        ccg_data = here.code_context_graph if hasattr(here, 'code_context_graph') else {};
+        local_path = here.local_path if hasattr(here, 'local_path') else "";
+        
+        # Step 1: Initialize markdown generator
+        print("\n[1/3] Initializing markdown generator...");
+        md_gen = MarkdownGenerator(self.repo_name, self.repo_url);
+        print("✓ Markdown generator ready");
+        
+        # Step 2: Generate documentation
+        print("\n[2/3] Generating comprehensive documentation...");
+        print("  - Creating header and overview");
+        print("  - Formatting repository structure");
+        print("  - Building API reference");
+        print("  - Generating relationship diagrams");
+        
+        markdown_doc = md_gen.generate_full_documentation(
+            file_tree=file_tree,
+            readme_summary=readme_summary,
+            ccg_data=ccg_data,
+            local_path=local_path
+        );
+        
+        print(f"✓ Generated {len(markdown_doc)} characters of documentation");
+        
+        # Step 3: Save documentation
+        print("\n[3/3] Saving documentation to disk...");
+        doc_saver = DocumentationSaver(self.output_path);
+        
+        doc_path = doc_saver.save_documentation(self.repo_name, markdown_doc);
+        
+        # Also save CCG data
+        if ccg_data {
+            doc_saver.save_ccg_json(self.repo_name, ccg_data);
+        }
+        
+        # Store the documentation path
+        here.documentation_path = doc_path;
+        here.documentation_content = markdown_doc;
+        
+        print("\n" + "=" * 50);
+        print("DocGenie Complete!");
+        print("=" * 50);
+        print(f"\n📄 Documentation available at: {doc_path}");
     }
 }
 
