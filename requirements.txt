@@ -29,3 +29,4 @@ streamlit>=1.28.0
 
 # Development
 pytest>=7.4.0
+requests>=2.31.0

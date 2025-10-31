@@ -2,7 +2,6 @@
 Codebase Genius - Main Entry Point
 Multi-agent system for automatic code documentation generation
 """
-
 import os;
 import json;
 import from dotenv { load_dotenv }
@@ -16,6 +15,9 @@ node Repository {
     has file_tree: dict = {};
     has readme_summary: str = "";
     has analyzed: bool = False;
+    has code_context_graph: dict = {};
+    has documentation_path: str = "";
+    has documentation_content: str = "";
 }
 
 node CodeFile {
@@ -26,6 +28,7 @@ node CodeFile {
     has classes: list = [];
     has imports: list = [];
 }
+
 node Documentation {
     has content: str = "";
     has sections: list = [];
@@ -83,9 +86,9 @@ walker CodeGenius {
         print("\n" + "=" * 50);
         print("🎉 CodeGenius Workflow Complete!");
         print("=" * 50);
-        
+
         # Print final summary
-        if hasattr(here, 'documentation_path') {
+        if here.documentation_path {
             print(f"\n✅ Documentation generated successfully!");
             print(f"📁 Output location: {here.documentation_path}");
             print(f"\n💡 View your documentation:");
@@ -99,13 +102,13 @@ walker RepoMapper {
     Agent responsible for repository exploration and mapping
     """
     has repo_url: str;
-
+    
     can map_repository with entry {
         print("\n" + "=" * 50);
         print("RepoMapper Agent Started");
         print("=" * 50);
         print(f"Target Repository: {self.repo_url}");
-
+        
         # Import Python utilities
         import from utils.repo_utils {
             RepoCloner,
@@ -117,33 +120,40 @@ walker RepoMapper {
         cloner = RepoCloner();
         tree_gen = FileTreeGenerator();
         readme_analyzer = ReadmeAnalyzer();
-
+        
         # Step 1: Clone repository
         print("\n[1/4] Cloning repository...");
         local_path = cloner.clone_repository(self.repo_url);
-
+        
         if not local_path {
             print("ERROR: Failed to clone repository!");
             return;
         }
-
+        
         print(f"✓ Repository cloned to: {local_path}");
         here.local_path = local_path;
-
+        
         # Step 2: Generate file tree
         print("\n[2/4] Generating file tree...");
         file_tree = tree_gen.generate_tree(local_path);
         here.file_tree = file_tree;
         
         print(f"✓ File tree generated with {len(file_tree.get('children', []))} top-level items");
-
+        
         # Step 3: Find important files
         print("\n[3/4] Identifying important files...");
         important_files = tree_gen.get_important_files(file_tree);
         print(f"✓ Found {len(important_files)} important files:");
-        for file in important_files[:5] {  # Show first 5
+        
+        i = 0;
+        for file in important_files {
+            if i >= 5 {
+                break;
+            }
             print(f"  - {os.path.basename(file)}");
+            i += 1;
         }
+        
         if len(important_files) > 5 {
             print(f"  ... and {len(important_files) - 5} more");
         }
@@ -151,7 +161,7 @@ walker RepoMapper {
         # Step 4: Analyze README
         print("\n[4/4] Analyzing README...");
         readme_path = readme_analyzer.find_readme(local_path);
-
+        
         if readme_path {
             readme_content = readme_analyzer.read_readme(readme_path);
             readme_summary = readme_analyzer.extract_summary(readme_content);
@@ -169,7 +179,7 @@ walker RepoMapper {
         }
 
         here.analyzed = True;
-
+        
         print("\n" + "=" * 50);
         print("RepoMapper Complete!");
         print("=" * 50);
@@ -190,15 +200,15 @@ walker CodeAnalyzer {
         print(f"Analyzing repository at: {self.local_path}");
         
         # Import analysis utilities
-        import from utils.code_analyzer { 
-            CodeParser, 
-            PythonAnalyzer, 
+        import from utils.code_analyzer {
+            CodeParser,
+            PythonAnalyzer,
             CodeContextGraph,
             FileSelector
         }
         
         import from pathlib { Path }
-
+        
         # Step 1: Select files to analyze
         print(f"\n[1/4] Selecting files to analyze (max: {self.max_files})...");
         files_to_analyze = FileSelector.get_code_files(self.local_path, self.max_files);
@@ -214,7 +224,7 @@ walker CodeAnalyzer {
             print(f"  {i+1}. {Path(file).name}");
             i += 1;
         }
-
+        
         if len(files_to_analyze) > 5 {
             print(f"  ... and {len(files_to_analyze) - 5} more");
         }
@@ -296,16 +306,16 @@ walker DocGenie {
         print(f"Generating documentation for: {self.repo_name}");
         
         # Import documentation utilities
-        import from utils.doc_generator { 
-            MarkdownGenerator, 
-            DocumentationSaver 
+        import from utils.doc_generator {
+            MarkdownGenerator,
+            DocumentationSaver
         }
         
         # Get data from the repository node
-        file_tree = here.file_tree if hasattr(here, 'file_tree') else {};
-        readme_summary = here.readme_summary if hasattr(here, 'readme_summary') else "";
-        ccg_data = here.code_context_graph if hasattr(here, 'code_context_graph') else {};
-        local_path = here.local_path if hasattr(here, 'local_path') else "";
+        file_tree = here.file_tree if here.file_tree else {};
+        readme_summary = here.readme_summary if here.readme_summary else "";
+        ccg_data = here.code_context_graph if here.code_context_graph else {};
+        local_path = here.local_path if here.local_path else "";
         
         # Step 1: Initialize markdown generator
         print("\n[1/3] Initializing markdown generator...");
@@ -331,7 +341,6 @@ walker DocGenie {
         # Step 3: Save documentation
         print("\n[3/3] Saving documentation to disk...");
         doc_saver = DocumentationSaver(self.output_path);
-        
         doc_path = doc_saver.save_documentation(self.repo_name, markdown_doc);
         
         # Also save CCG data
@@ -350,24 +359,223 @@ walker DocGenie {
     }
 }
 
+# ==================== API WALKER ====================
+
+walker DocumentRepositoryAPI {
+    """
+    API walker for handling documentation generation requests
+    """
+    has repo_url: str = "";
+    has max_files: int = 30;
+    has output_path: str = "./outputs";
+    
+    can process_request with entry {
+        print("\n" + "🌐 " * 25);
+        print("API Request Received");
+        print("🌐 " * 25);
+        
+        # Get parameters from the node context if available
+        if hasattr(here, 'repo_url') and here.repo_url {
+            self.repo_url = here.repo_url;
+        }
+        if hasattr(here, 'max_files') and here.max_files {
+            self.max_files = here.max_files;
+        }
+        if hasattr(here, 'output_path') and here.output_path {
+            self.output_path = here.output_path;
+        }
+        
+        print(f"Repository URL: {self.repo_url}");
+        print(f"Max files to analyze: {self.max_files}");
+        
+        # Validate URL
+        if not self.repo_url or not self.repo_url.startswith('http') {
+            report {
+                "success": False,
+                "error": "Invalid repository URL. Must start with http:// or https://",
+                "repo_url": self.repo_url
+            };
+            return;
+        }
+        
+        # Extract repo name
+        import from pathlib { Path }
+        repo_name = self.repo_url.rstrip('/').split('/')[-1];
+        if repo_name.endswith('.git') {
+            repo_name = repo_name[:-4];
+        }
+        
+        # Create a fresh repository node for this request
+        repo_node = Repository(
+            url=self.repo_url,
+            name=repo_name
+        );
+        
+        try {
+            # Step 1: Map repository
+            print("\n📍 Step 1/3: Mapping repository...");
+            repo_node spawn RepoMapper(repo_url=self.repo_url);
+            
+            # Step 2: Analyze code
+            print("\n📍 Step 2/3: Analyzing code...");
+            if repo_node.local_path {
+                repo_node spawn CodeAnalyzer(
+                    local_path=repo_node.local_path,
+                    max_files=self.max_files
+                );
+            }
+            
+            # Step 3: Generate documentation
+            print("\n📍 Step 3/3: Generating documentation...");
+            repo_node spawn DocGenie(
+                repo_name=repo_name,
+                repo_url=self.repo_url,
+                output_path=self.output_path
+            );
+            
+            # Prepare response
+            stats = {};
+            if repo_node.code_context_graph {
+                ccg = repo_node.code_context_graph;
+                stats = ccg.get('statistics', {}) if isinstance(ccg, dict) else {};
+            }
+            
+            print("\n✅ API Request Complete!");
+            
+            # Report success with detailed information
+            report {
+                "success": True,
+                "repo_name": repo_name,
+                "repo_url": self.repo_url,
+                "documentation_path": repo_node.documentation_path if repo_node.documentation_path else "",
+                "statistics": {
+                    "functions": stats.get('functions', 0),
+                    "classes": stats.get('classes', 0),
+                    "files_analyzed": stats.get('files_analyzed', 0),
+                    "total_nodes": stats.get('total_nodes', 0),
+                    "total_edges": stats.get('total_edges', 0)
+                },
+                "readme_summary": repo_node.readme_summary if repo_node.readme_summary else "",
+                "message": "Documentation generated successfully!"
+            };
+            
+        } except Exception as e {
+            print(f"\n❌ Error processing request: {e}");
+            report {
+                "success": False,
+                "error": str(e),
+                "repo_url": self.repo_url
+            };
+        }
+    }
+}
+
+walker GetDocumentationAPI {
+    """
+    API walker to retrieve generated documentation
+    """
+    has repo_name: str;
+    has output_path: str = "./outputs";
+    
+    can get_documentation with entry {
+        print(f"\n📖 Retrieving documentation for: {self.repo_name}");
+        
+        import from pathlib { Path }
+        import os;
+        
+        # Check if documentation exists
+        doc_path = Path(self.output_path) / self.repo_name / "DOCUMENTATION.md";
+        
+        if not os.path.exists(doc_path) {
+            report {
+                "success": False,
+                "error": f"Documentation not found for repository: {self.repo_name}",
+                "repo_name": self.repo_name
+            };
+            return;
+        }
+        
+        # Read documentation
+        try {
+            with open(doc_path, 'r', encoding='utf-8') as f {
+                content = f.read();
+            }
+            
+            print(f"✅ Documentation retrieved ({len(content)} chars)");
+            
+            report {
+                "success": True,
+                "repo_name": self.repo_name,
+                "documentation": content,
+                "path": str(doc_path)
+            };
+            
+        } except Exception as e {
+            report {
+                "success": False,
+                "error": str(e),
+                "repo_name": self.repo_name
+            };
+        }
+    }
+}
+
+walker ListDocumentationsAPI {
+    """
+    API walker to list all generated documentations
+    """
+    has output_path: str = "./outputs";
+    
+    can list_docs with entry {
+        print("\n📚 Listing all generated documentations...");
+        
+        import from pathlib { Path }
+        import os;
+        
+        output_dir = Path(self.output_path);
+        
+        if not output_dir.exists() {
+            report {
+                "success": True,
+                "documentations": [],
+                "count": 0
+            };
+            return;
+        }
+        
+        # Find all documentation directories
+        docs = [];
+        for item in output_dir.iterdir() {
+            if item.is_dir() {
+                doc_file = item / "DOCUMENTATION.md";
+                if doc_file.exists() {
+                    docs.append({
+                        "repo_name": item.name,
+                        "path": str(doc_file),
+                        "size": os.path.getsize(doc_file)
+                    });
+                }
+            }
+        }
+        
+        print(f"✅ Found {len(docs)} documentations");
+        
+        report {
+            "success": True,
+            "documentations": docs,
+            "count": len(docs)
+        };
+    }
+}
+
 # ==================== MAIN ENTRY ====================
 
 with entry {
-    print("\n" + "🚀 " * 20);
-    print("CODEBASE GENIUS - AI-Powered Documentation System");
-    print("🚀 " * 20 + "\n");
-
+    # Just load environment variables when serving
     load_dotenv();
-
-    repo_node = Repository(
-        url="https://github.com/octocat/Hello-World",
-        name="Hello-World"
-    );
-
-    repo_node spawn CodeGenius(
-        repo_url="https://github.com/octocat/Hello-World",
-        output_path="./outputs"
-    );
-
-    print("\n✅ Workflow complete!");
+    
+    # The API walkers will be available at:
+    # POST /walker/DocumentRepositoryAPI
+    # POST /walker/GetDocumentationAPI
+    # POST /walker/ListDocumentationsAPI
 }
